@@ -34,6 +34,11 @@ import { useTheme } from '../context/ThemeContext'
 import { chatbotApi, semanticSearchApi } from '../lib/api'
 import { indicatorsApi, markersApi, maintenanceApi } from '../lib/api'
 import { authLib } from '../lib/auth'
+import {
+    prepareWhisperSmall,
+    transcribeWithWhisperSmall,
+    type WhisperProgress,
+} from '../lib/whisper'
 import * as Print from 'expo-print'
 import * as Sharing from 'expo-sharing'
 import * as FileSystem from 'expo-file-system/legacy'
@@ -151,6 +156,7 @@ export default function ChatbotScreen({ onBack }: ChatbotScreenProps) {
     const [isLoading, setIsLoading] = useState(false)
     const [isListening, setIsListening] = useState(false)
     const [isTranscribing, setIsTranscribing] = useState(false)
+    const [transcriptionStatus, setTranscriptionStatus] = useState('')
     const [voiceInputMode, setVoiceInputMode] = useState<VoiceInputMode>(null)
     const [searchQuery, setSearchQuery] = useState('')
     const [searchResults, setSearchResults] = useState<any[]>([])
@@ -187,6 +193,13 @@ export default function ChatbotScreen({ onBack }: ChatbotScreenProps) {
         setIsListening(listening)
         if (!listening) updateVoiceMode(null)
     }, [updateVoiceMode])
+
+    const updateWhisperProgress = useCallback((progress: WhisperProgress) => {
+        const percentage = typeof progress.progress === 'number'
+            ? ` ${Math.round(progress.progress)}%`
+            : ''
+        setTranscriptionStatus(`${progress.message}${percentage}`)
+    }, [])
 
     // ─── Carrega dados do usuário (marcadores + indicadores) ─────────────────
     const loadUserData = useCallback(async () => {
@@ -297,8 +310,8 @@ export default function ChatbotScreen({ onBack }: ChatbotScreenProps) {
 
     // ─── Reconhecimento de Voz ────────────────────────────────────────────────
     // No mobile: usa expo-speech-recognition (nativo iOS/Android)
-    // No web: grava com MediaRecorder e transcreve no backend. A Web Speech
-    // API fica apenas como fallback, pois ela costuma encerrar sessões sozinha.
+    // No web: grava com MediaRecorder e transcreve localmente com Whisper Small.
+    // A Web Speech API fica apenas como fallback quando MediaRecorder não existe.
     const startVoiceRecognition = async (mode: Exclude<VoiceInputMode, null>) => {
         if (isListeningRef.current) return
         updateVoiceMode(mode)
@@ -356,6 +369,9 @@ export default function ChatbotScreen({ onBack }: ChatbotScreenProps) {
                     webAudioChunksRef.current = []
                     updateListeningState(true)
                     setInputText('')
+                    void prepareWhisperSmall(updateWhisperProgress).catch(error => {
+                        console.warn('[Whisper Small] Pré-carregamento indisponível:', error)
+                    })
 
                     recorder.ondataavailable = event => {
                         if (event.data.size > 0) webAudioChunksRef.current.push(event.data)
@@ -370,7 +386,6 @@ export default function ChatbotScreen({ onBack }: ChatbotScreenProps) {
                     recorder.onstop = async () => {
                         const chunks = webAudioChunksRef.current
                         const type = recorder.mimeType || chunks[0]?.type || 'audio/webm'
-                        const extension = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm'
                         webAudioChunksRef.current = []
                         webMediaRecorderRef.current = null
                         stream.getTracks().forEach(track => track.stop())
@@ -381,18 +396,23 @@ export default function ChatbotScreen({ onBack }: ChatbotScreenProps) {
                         if (!audio.size) return
 
                         setIsTranscribing(true)
+                        setTranscriptionStatus('Preparando Whisper Small...')
                         try {
-                            const response = await chatbotApi.transcribeAudio(audio, `voice-message.${extension}`)
-                            const transcript = response.data?.text?.trim()
-                            if (!response.success || !transcript) {
-                                throw new Error(response.error || 'Nenhuma fala foi reconhecida.')
-                            }
+                            const transcript = (await transcribeWithWhisperSmall(
+                                audio,
+                                updateWhisperProgress,
+                            )).trim()
+                            if (!transcript) throw new Error('Nenhuma fala foi reconhecida.')
                             setInputText(transcript)
                             await sendMessage(transcript)
                         } catch (error: any) {
-                            Alert.alert('Transcrição', error?.message || 'Não foi possível transcrever o áudio.')
+                            Alert.alert(
+                                'Whisper Small',
+                                error?.message || 'Não foi possível transcrever o áudio neste dispositivo.'
+                            )
                         } finally {
                             setIsTranscribing(false)
+                            setTranscriptionStatus('')
                         }
                     }
                     recorder.start(250)
@@ -1256,7 +1276,9 @@ export default function ChatbotScreen({ onBack }: ChatbotScreenProps) {
                 {isTranscribing && (
                     <View style={styles.micStatusRow}>
                         <ActivityIndicator size="small" color={colors.primary} />
-                        <Text style={[styles.micStatusText, { color: colors.primary }]}>Transcrevendo áudio...</Text>
+                        <Text style={[styles.micStatusText, { color: colors.primary }]}>
+                            {transcriptionStatus || 'Transcrevendo com Whisper Small...'}
+                        </Text>
                     </View>
                 )}
                 <View style={[styles.inputRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -1266,7 +1288,7 @@ export default function ChatbotScreen({ onBack }: ChatbotScreenProps) {
                             { color: colors.text },
                             isListening && { color: '#ef4444' }
                         ]}
-                        placeholder={isListening ? '🔴 Ouvindo... fale agora' : isTranscribing ? 'Transcrevendo áudio...' : 'Digite sua mensagem...'}
+                        placeholder={isListening ? '🔴 Ouvindo... fale agora' : isTranscribing ? 'Whisper Small está transcrevendo...' : 'Digite sua mensagem...'}
                         placeholderTextColor={isListening ? '#ef4444' : colors.textMuted}
                         value={inputText}
                         onChangeText={setInputText}

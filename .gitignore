@@ -11,6 +11,7 @@ public/assets/
 public/index.html
 public/metadata.json
 public/favicon.ico
+public/whisper-worker.js
 *.tsbuildinfo
 .DS_Store
 *.pem
