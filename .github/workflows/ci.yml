@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - name: Instalar backend
+        run: npm ci
+      - name: Instalar frontend
+        run: npm run frontend:install
+      - name: Validar TypeScript
+        run: npm run typecheck
+      - name: Build de produção
+        run: npm run frontend:build && npm run frontend:sync && npx next build

@@ -1,0 +1,48 @@
+{
+  "name": "biodash-entrega-pln",
+  "version": "1.0.0",
+  "description": "BioDash unificado: Expo Web, Next.js API e PLN via OpenAI",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "dev": "next dev -p 3003",
+    "dev:frontend": "npm run web --prefix frontend",
+    "frontend:install": "npm ci --prefix frontend",
+    "frontend:build": "npm run build:web --prefix frontend",
+    "frontend:sync": "node scripts/sync-frontend.mjs",
+    "build": "npm run frontend:install && npm run frontend:build && npm run frontend:sync && next build",
+    "start": "next start -p 3003",
+    "typecheck": "npm run typecheck:backend && npm run typecheck:frontend",
+    "typecheck:backend": "tsc --noEmit --incremental false",
+    "typecheck:frontend": "npm exec --prefix frontend tsc -- --noEmit --incremental false"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alerodriguesm02/Biodash-Entrega-PLN.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "homepage": "https://github.com/alerodriguesm02/Biodash-Entrega-PLN#readme",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1035.0",
+    "@aws-sdk/s3-request-presigner": "^3.1036.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.3",
+    "next": "^16.0.0",
+    "pg": "^8.21.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "stripe": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^24.9.1",
+    "@types/pg": "^8.11.6",
+    "@types/react": "^19.2.2",
+    "typescript": "5.9.3"
+  }
+}

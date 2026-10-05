@@ -1,0 +1,210 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+// No deploy unificado, frontend e API compartilham o mesmo domínio.
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "/api";
+
+// Endpoint de geolocalização (conectado ao MongoDB na EC2 via backend)
+const MARKERS_URL = `${API_BASE_URL}/markers`;
+
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  error?: string;
+}
+
+// ==========================================
+// Helper base — faz requisições HTTP genéricas
+// ==========================================
+export async function apiRequest<T = any>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<ApiResponse<T>> {
+  const alreadyBased = endpoint === API_BASE_URL || endpoint.startsWith(`${API_BASE_URL}/`);
+  const url = endpoint.startsWith("http") || alreadyBased
+    ? endpoint
+    : `${API_BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
+  const config: RequestInit = {
+    ...options,
+    credentials: options.credentials ?? "include",
+    headers: {
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...options.headers,
+    },
+  };
+
+  try {
+    const res = await fetch(url, config);
+    const responseText = await res.text();
+    let data: any;
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error(`🔴 Erro de JSON na API [${url}]: ${responseText}`);
+      return { success: false, error: "O servidor não enviou um JSON válido." };
+    }
+
+    if (!res.ok) {
+      return {
+        success: false,
+        error: data.error || data.message || `Erro ${res.status}: ${res.statusText}`,
+      };
+    }
+
+    return { success: true, data: data.hasOwnProperty('data') ? data.data : data, message: data.message };
+  } catch (err: any) {
+    console.error(`API Request Error [${endpoint}]:`, err);
+    return {
+      success: false,
+      error: "Erro de conexão. Verifique se o backend está rodando.",
+    };
+  }
+}
+
+// ==========================================
+// Helper autenticado — injeta o Bearer token
+// ==========================================
+const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  const token = await AsyncStorage.getItem("@biodash_jwt_token");
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+};
+
+async function authRequest<T = any>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<ApiResponse<T>> {
+  const headers = await getAuthHeaders();
+  return apiRequest<T>(endpoint, {
+    ...options,
+    headers: { ...headers, ...(options.headers || {}) },
+  });
+}
+
+// ==========================================
+// markersApi — Geolocalização (PostgreSQL)
+// ==========================================
+export const markersApi = {
+  fetch: () => authRequest(MARKERS_URL, { method: "GET" }),
+  save: (data: any) =>
+    authRequest(MARKERS_URL, { method: "POST", body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    authRequest(`${MARKERS_URL}/${id}`, { method: "DELETE" }),
+};
+
+// ==========================================
+// indicatorsApi — Indicadores do Biodigestor
+// ==========================================
+export const indicatorsApi = {
+  fetch: () => authRequest(`${API_BASE_URL}/indicators`, { method: "GET" }),
+  save: (data: {
+    wasteProcessed: number;
+    energyGenerated: number;
+    taxSavings: number;
+    month: string;
+    year: string;
+  }) =>
+    authRequest(`${API_BASE_URL}/indicators`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
+
+// ==========================================
+// maintenanceApi — Manutenções (PostgreSQL)
+// ==========================================
+export const maintenanceApi = {
+  fetchSchedules: () =>
+    authRequest(`${API_BASE_URL}/maintenance/schedules`, { method: "GET" }),
+  updateSchedule: (id: string, status: string) =>
+    authRequest(`${API_BASE_URL}/maintenance/schedules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    }),
+  deleteSchedule: (id: string) =>
+    authRequest(`${API_BASE_URL}/maintenance/schedules/${id}`, {
+      method: "DELETE",
+    }),
+  createSchedule: (data: {
+    name: string;
+    priority: string;
+    scheduledDate: string;
+  }) =>
+    authRequest(`${API_BASE_URL}/maintenance/schedules`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  fetchIncident: () =>
+    authRequest(`${API_BASE_URL}/maintenance/incidents`, { method: "GET" }),
+  resolveIncident: (message: string) =>
+    authRequest(`${API_BASE_URL}/maintenance/incidents/active`, {
+      method: "PUT",
+      body: JSON.stringify({ resolution_message: message, status: "resolved" }),
+    }),
+};
+
+// ==========================================
+// alertsApi — Alertas de Sensores (PostgreSQL)
+// ==========================================
+export const alertsApi = {
+  fetch: () => authRequest(`${API_BASE_URL}/alerts`, { method: "GET" }),
+  create: (data: { alertLevel: string; message: string }) =>
+    authRequest(`${API_BASE_URL}/alerts`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
+
+// ==========================================
+// profileApi — Perfil do Usuário
+// ==========================================
+export const profileApi = {
+  fetch: () => authRequest(`${API_BASE_URL}/profile`, { method: "GET" }),
+  update: (data: any) =>
+    authRequest(`${API_BASE_URL}/profile`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+};
+
+// ==========================================
+// Assistente BioDash. As respostas textuais são processadas localmente no
+// backend; somente o áudio é enviado à API externa de transcrição.
+// ==========================================
+export const chatbotApi = {
+  send: (data: { message: string }) =>
+    authRequest(`${API_BASE_URL}/chatbot`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  transcribeAudio: (audio: Blob, filename = "voice-message.webm") => {
+    const formData = new FormData();
+    formData.append("audio", audio, filename);
+    return authRequest<{ text: string }>(`${API_BASE_URL}/chatbot/transcribe`, {
+      method: "POST",
+      body: formData,
+    });
+  },
+};
+
+export const semanticSearchApi = {
+  search: (data: { query: string }) =>
+    authRequest(`${API_BASE_URL}/semantic-search`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
+
+// ==========================================
+// Consulta de biodigestores pela API unificada.
+// ==========================================
+export const biodigestoresApi = {
+  fetch: (userId: string) =>
+    authRequest(`${API_BASE_URL}/markers?user_id=${encodeURIComponent(userId)}`, {
+      method: "GET",
+    }),
+};

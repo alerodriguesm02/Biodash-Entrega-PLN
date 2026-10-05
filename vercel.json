@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "functions": {
+    "app/api/chatbot/transcribe/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/chatbot/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}
