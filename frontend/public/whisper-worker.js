@@ -1,4 +1,5 @@
 import { env, pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/+esm'
+import { normalizeWhisperTranscript } from './whisper-normalization.js'
 
 const MODEL_ID = 'Xenova/whisper-small'
 let transcriberPromise = null
@@ -15,21 +16,6 @@ function emitStatus(message, progress, requestId) {
 function normalizeProgress(value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
   return Math.max(0, Math.min(100, value))
-}
-
-function normalizeBioDashTerms(text) {
-  return text
-    .replace(/\bbio(?:di)?[\s-]?gestores\b/gi, 'biodigestores')
-    .replace(/\bbio(?:di)?[\s-]?gestor\b/gi, 'biodigestor')
-    .replace(/\bbiodigester\b/gi, 'biodigestor')
-    .replace(/\bresidus\b/gi, 'resíduos')
-    .replace(/\bbio dash\b/gi, 'BioDash')
-    .replace(/\bkw[\s-]?h\b/gi, 'kWh')
-    .replace(/\bquil[oô]\s+ou\s+a\s+teora\b/gi, 'quilowatt-hora')
-    .replace(/\bquilo(?:watt)?[\s-]?hora\b/gi, 'quilowatt-hora')
-    .replace(/\ba gente d[ei]\s+a manutenção\b/gi, match =>
-      /^[A-ZÁÀÃÂ]/.test(match) ? 'Agende a manutenção' : 'agende a manutenção'
-    )
 }
 
 async function createTranscriber(requestId) {
@@ -114,7 +100,7 @@ self.onmessage = async event => {
     self.postMessage({
       type: 'result',
       requestId,
-      text: normalizeBioDashTerms(String(result?.text || '').trim()),
+      text: normalizeWhisperTranscript(String(result?.text || '').trim()),
     })
   } catch (error) {
     self.postMessage({

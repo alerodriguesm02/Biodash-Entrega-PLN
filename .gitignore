@@ -12,6 +12,7 @@ public/index.html
 public/metadata.json
 public/favicon.ico
 public/whisper-worker.js
+public/whisper-normalization.js
 *.tsbuildinfo
 .DS_Store
 *.pem

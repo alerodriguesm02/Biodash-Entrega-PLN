@@ -16,7 +16,8 @@
     "start": "next start -p 3003",
     "typecheck": "npm run typecheck:backend && npm run typecheck:frontend",
     "typecheck:backend": "tsc --noEmit --incremental false",
-    "typecheck:frontend": "npm exec --prefix frontend tsc -- --noEmit --incremental false"
+    "typecheck:frontend": "npm exec --prefix frontend tsc -- --noEmit --incremental false",
+    "test:whisper": "node scripts/test-whisper-normalization.mjs"
   },
   "repository": {
     "type": "git",
