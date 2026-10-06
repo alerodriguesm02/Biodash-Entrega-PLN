@@ -25,6 +25,11 @@ function normalizeBioDashTerms(text) {
     .replace(/\bresidus\b/gi, 'resíduos')
     .replace(/\bbio dash\b/gi, 'BioDash')
     .replace(/\bkw[\s-]?h\b/gi, 'kWh')
+    .replace(/\bquil[oô]\s+ou\s+a\s+teora\b/gi, 'quilowatt-hora')
+    .replace(/\bquilo(?:watt)?[\s-]?hora\b/gi, 'quilowatt-hora')
+    .replace(/\ba gente d[ei]\s+a manutenção\b/gi, match =>
+      /^[A-ZÁÀÃÂ]/.test(match) ? 'Agende a manutenção' : 'agende a manutenção'
+    )
 }
 
 async function createTranscriber(requestId) {
